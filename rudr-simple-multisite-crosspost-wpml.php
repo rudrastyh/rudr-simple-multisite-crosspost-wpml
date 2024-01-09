@@ -4,7 +4,7 @@
  * Description: Allows to connect translated posts to their originals.
  * Author: Misha Rudrastyh
  * Author URI: https://rudrastyh.com
- * Version: 1.1
+ * Version: 1.2
  * Plugin URI: https://rudrastyh.com
  * Network: true
  */
@@ -16,6 +16,39 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		public function __construct(){
 			add_action( 'rudr_crosspost_publish', array( $this, 'do_connection' ), 10, 3 );
 			add_action( 'rudr_crosspost_update', array( $this, 'do_connection' ), 10, 3 );
+			add_action( 'save_post', array( $this, 'save_meta_boxes' ), 9999, 2 );
+
+		}
+
+		public function save_meta_boxes( $post_id, $post ) {
+
+			if( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+				return;
+			}
+
+			if( empty( $_REQUEST[ 'meta-box-loader' ] ) ) {
+				return;
+			}
+
+			if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost' ) ) {
+				return;
+			}
+
+			// file_put_contents( __DIR__ . '/log.txt' , 'hello' . print_r( $translation_data, true ) );
+
+			if( ! $blogs = Rudr_Simple_Multisite_Crosspost::get_blogs() ) {
+				return;
+			}
+
+			foreach( $blogs as $blog_id => $blog ) {
+				if( ! $new_post_id = Rudr_Simple_Multisite_Crosspost::is_crossposted( $post_id, $blog_id ) ) {
+					continue;
+				}
+				switch_to_blog( $blog_id );
+				$this->do_connection( $new_post_id, $blog_id, array( 'post_id' => $post_id ) );
+				restore_current_blog();
+			}
+
 		}
 
 		// get translation data
