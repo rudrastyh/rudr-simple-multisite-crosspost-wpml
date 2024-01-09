@@ -4,8 +4,8 @@
  * Description: Allows to connect translated posts to their originals.
  * Author: Misha Rudrastyh
  * Author URI: https://rudrastyh.com
- * Version: 1.0
- * Plugin URI: https://rudrastyh.com/support/wpml-compatibility
+ * Version: 1.1
+ * Plugin URI: https://rudrastyh.com
  * Network: true
  */
 
@@ -15,10 +15,11 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 
 		public function __construct(){
 			add_action( 'rudr_crosspost_publish', array( $this, 'do_connection' ), 10, 3 );
+			add_action( 'rudr_crosspost_update', array( $this, 'do_connection' ), 10, 3 );
 		}
 
 		// get translation data
-		public function get_tr_data( $post_id ) {
+		private function get_translation_data( $post_id ) {
 
 			global $wpdb;
 
@@ -27,7 +28,7 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 
 			$tr_data = $wpdb->get_row(
 				"
-				SELECT trid, language_code, source_language_code
+				SELECT element_type, trid, language_code, source_language_code
 				FROM {$wpdb->prefix}icl_translations
 				WHERE element_id = {$post_id}
 				AND element_type = 'post_{$post_type}'
@@ -35,74 +36,131 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 				ARRAY_A
 			);
 
+			if( empty( $tr_data ) || ! $tr_data || false === $tr_data ) {
+				return false;
+			}
+
 			return $tr_data;
 
 		}
 
+
 		public function do_connection( $new_post_id, $blog_id, $data ) {
+			// ini_set('display_errors', 1);
+			// ini_set('display_startup_errors', 1);
+			// error_reporting(E_ALL);
 			// we need to come back to original blog in order to get post translations
 			restore_current_blog();
 
 			global $wpdb;
 
-			// let's get translation data from current post
-			// Array( 'trid' => ,'language_code'=>, 'source_language_code' => )
-			$tr_data = $this->get_tr_data( $data[ 'post_id' ] );
+			// this array will contain all the post and their translatinos from current blog
+			// Array( post_id => translation_data
+			$translations = array();
 
-			if( empty( $tr_data ) || ! $tr_data ) {
+			// let's get translation data from current post
+			// Array( 'element_type' => 'trid' => ,'language_code'=>, 'source_language_code' => )
+			$translation_data = $this->get_translation_data( $data[ 'post_id' ] );
+
+			if( ! $translation_data ) {
 				return;
 			}
 
+			// our first post in translations arrat
+			$translations[ $new_post_id ] = $translation_data;
+
 			// now it is time to get trid from $blog_id
-			// 1. get all translations from current blog first
+			// get all translations(posts in this language on this site) from current blog first
 			$translated_ids = $wpdb->get_col(
 				"
 				SELECT element_id
 				FROM {$wpdb->prefix}icl_translations
-				WHERE trid = {$tr_data[ 'trid' ]}
+				WHERE trid = {$translation_data[ 'trid' ]}
 				"
 			);
 
-			// 2. get their crossposted ids on $blog_id
-			$crossposted_ids = array();
-			foreach( $translated_ids as $translated_id ) {
-				// do nothing for current post
-				if( $data[ 'post_id' ] === $translated_id ) {
-					continue;
-				}
-				$c = get_post_meta( $translated_id, '_crosspost_to_data', true );
-				if( is_array( $c ) && array_key_exists( $blog_id, $c ) ) {
-					$crossposted_ids[] = $c[ $blog_id ];
+			if( $translated_ids ) {
+				foreach( $translated_ids as $translated_id ) {
+					// our current post is already in the array
+					if( $data[ 'post_id' ] === $translated_id ) {
+						continue;
+					}
+					$c = get_post_meta( $translated_id, '_crosspost_to_data', true );
+					if( is_array( $c ) && array_key_exists( $blog_id, $c ) ) {
+						$crossposted_id = $c[ $blog_id ];
+						$translations[ $crossposted_id ] = $this->get_translation_data( $translated_id );
+					}
 				}
 			}
 
-			// 3. on $blog_id let's find a trid
+			// Perfect!
+			// now we have an array Array( new_post_id => old_translation_data ) gonna push it
+
 			switch_to_blog( $blog_id );
-			// most likely the first post should work
-			$crossposted_id = reset( $crossposted_ids );
-			// get its translation data on subsite
-			$crossposted_tr_data = $this->get_tr_data( $crossposted_id );
-			if( ! empty( $crossposted_tr_data[ 'trid' ] ) ) {
-				// update
+
+			// we don't know our current translation id!
+			$trid = 0;
+			// let's try to update any of existing translations first and maybe we find out $trid!
+			foreach( $translations as $element_id => $translation ) {
+
+				$translation_data = $this->get_translation_data( $element_id );
+
+				if( ! $translation_data ) {
+					continue;
+				}
+				// what? we have translation data? get its ID!
+				$trid = $translation_data[ 'trid' ];
+				//what? we have translation data? let's update it!
 				$wpdb->update(
 					$wpdb->prefix . 'icl_translations',
 					array(
-						'trid' => $crossposted_tr_data[ 'trid' ],
-						'source_language_code' => $tr_data[ 'source_language_code' ]
+						'language_code' => $translation[ 'language_code' ],
+						'source_language_code' => $translation[ 'source_language_code' ],
 					),
 					array( // where
-						'element_id' => $new_post_id,
-						'element_type' => 'post_'.$data[ 'post_data' ][ 'post_type' ]
+						'trid' => $trid,
+						'element_id' => $element_id,
+						'element_type' => $translation[ 'element_type' ],
 					),
 					array(
-						'%d',
+						'%s',
 						'%s'
 					),
 					array(
+						'%d',
 						'%d',
 						'%s'
 					)
 				);
+			}
+
+			// wow, we updated the existing translations (I doubt we need it but in case)
+			// now we have to find out what is the last existing trid!
+			if( ! $trid ) {
+				$max_trid = $wpdb->get_var(
+					"
+					SELECT MAX(trid)
+					FROM {$wpdb->prefix}icl_translations
+					"
+				);
+				$trid = $max_trid + 1;
+			}
+
+			// next stop, inserting new translations!
+			foreach( $translations as $element_id => $translation ) {
+
+				$wpdb->insert(
+					$wpdb->prefix . 'icl_translations',
+					array(
+						'element_type' => $translation[ 'element_type' ],
+						'element_id' => $element_id,
+						'trid' => $trid,
+						'language_code' => $translation[ 'language_code' ],
+						'source_language_code' => $translation[ 'source_language_code' ],
+					),
+					array( '%s', '%d', '%d', '%s', '%s' )
+				);
+
 			}
 
 		}
