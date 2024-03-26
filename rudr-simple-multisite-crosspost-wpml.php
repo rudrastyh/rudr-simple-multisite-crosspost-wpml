@@ -4,7 +4,7 @@
  * Description: Allows to connect translated posts to their originals.
  * Author: Misha Rudrastyh
  * Author URI: https://rudrastyh.com
- * Version: 2.0
+ * Version: 2.1
  * Plugin URI: https://rudrastyh.com
  * Network: true
  */
@@ -35,6 +35,13 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		/*******************/
 		/*     HELPERS     */
 		/*******************/
+		/**
+		 * It is better to double checked whther the WPML is active to prevent unneded errors
+		 */
+		private function is_wpml_active(){
+			return is_plugin_active( 'sitepress-multilingual-cms/sitepress.php' );
+		}
+
 		/**
 		 * Allows to get all the object translations on the current blog
 		 *
@@ -133,6 +140,10 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		 */
 		public function add_language_info( $object_data ) {
 
+			if( ! $this->is_wpml_active() ) {
+				return $object_data;
+			}
+
 			$language_data = apply_filters(
 				'wpml_element_language_details',
 				null,
@@ -155,6 +166,9 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		 * Currently only translated attributes and variations
 		 */
 		public function add_translated_info( $object_data ) {
+			if( ! $this->is_wpml_active() ) {
+				return $object_data;
+			}
 //echo '<pre>';print_r( $object_data );exit;
 			// we get our translated info from the original post, yes
 			$source_product_id = $this->get_source_object_id( $object_data );
@@ -288,6 +302,10 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 				return;
 			}
 
+			if( ! $this->is_wpml_active() ) {
+				return $product_id;
+			}
+
 			if( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
         return;
 			}
@@ -413,6 +431,9 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		// hooks which modifies Rudr_Simple_Multisite_Woo_Crosspost::is_crossposted_product()
 		// makes it work for both languages and SKUs, not only for SKUs
 		public function get_crossposted_product_id( $product_id, $product_data ) {
+			if( ! $this->is_wpml_active() ) {
+				return $product_id;
+			}
 			// language code is not provided when we delete a post and also for upsells and cross-sales
 			if( empty( $product_data[ 'language_code' ] ) ) {
 				$original_blog_id = get_current_blog_id();
