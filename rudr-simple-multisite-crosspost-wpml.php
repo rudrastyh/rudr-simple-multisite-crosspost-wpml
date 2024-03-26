@@ -303,7 +303,7 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 			}
 
 			if( ! $this->is_wpml_active() ) {
-				return $product_id;
+				return;
 			}
 
 			if( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
