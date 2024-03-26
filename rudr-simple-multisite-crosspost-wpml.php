@@ -39,6 +39,8 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		 * It is better to double checked whther the WPML is active to prevent unneded errors
 		 */
 		private function is_wpml_active(){
+			require_once( ABSPATH . 'wp-admin/includes/plugin.php' );
+
 			return is_plugin_active( 'sitepress-multilingual-cms/sitepress.php' );
 		}
 
