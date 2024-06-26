@@ -4,7 +4,7 @@
  * Description: Allows to connect translated posts to their originals.
  * Author: Misha Rudrastyh
  * Author URI: https://rudrastyh.com
- * Version: 2.1
+ * Version: 2.2
  * Plugin URI: https://rudrastyh.com
  * Network: true
  */
@@ -118,7 +118,7 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		 * or a crossposted product or variation ID based both on SKU and Language Code
 		 */
 		public function is_crossposted( $post_id, $blog_id, $language_code ) {
-			if( 'product' === get_post_type( $post_id ) && function_exists( 'wc_get_product' ) ) {
+			if( 'product' === get_post_type( $post_id ) && function_exists( 'wc_get_product' ) && 'sku' === Rudr_Simple_Multisite_Woo_Crosspost::connection_type() ) {
 				if( $sku = get_post_meta( $post_id, '_sku', true ) ) {
 					switch_to_blog( $blog_id );
 					// no need for extra use of Rudr_Simple_Multisite_Woo_Crosspost::is_crossposted_product()
@@ -364,6 +364,8 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 				return;
 			}
 
+			$language_code = apply_filters( 'smc_wpml_pre_language_code', $language_data->language_code, $blog_id );
+
 			switch_to_blog( $blog_id );
 			do_action(
 				'wpml_set_element_language_details',
@@ -371,7 +373,7 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 					'element_id' => $crossposted_id,
 					'element_type' => $type,
 					'trid' => null, // if post already has 'trid' it won't be changed
-					'language_code' => $language_data->language_code,
+					'language_code' => $language_code,
 					'source_language_code' => $language_data->source_language_code, // by providing this value we are making a post a translation
 				)
 			);
@@ -390,8 +392,11 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 				if( ! $crossposted_element_id = $this->is_crossposted( $translation->element_id, $blog_id, $translation->language_code ) ) {
 					continue;
 				}
+
+				$translated_language_code = apply_filters( 'smc_wpml_pre_language_code', $translation->language_code, $blog_id );
+
 				$crossposted_translations[] = array(
-					'language_code' => $translation->language_code,
+					'language_code' => $translated_language_code,
 					'source_language_code' => $translation->source_language_code,
 					'trid' => $crossposted_trid,
 					'element_id' => $crossposted_element_id,
