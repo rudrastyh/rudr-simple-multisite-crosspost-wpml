@@ -4,7 +4,7 @@
  * Description: Allows to connect translated posts to their originals.
  * Author: Misha Rudrastyh
  * Author URI: https://rudrastyh.com
- * Version: 2.2
+ * Version: 2.3
  * Plugin URI: https://rudrastyh.com
  * Network: true
  */
@@ -52,10 +52,50 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		 */
 		public function get_translations( $object_id, $post_type_or_taxonomy_name = 'post' ) {
 
-			$type = apply_filters( 'wpml_element_type', $post_type_or_taxonomy_name );
-			$trid = apply_filters( 'wpml_element_trid', false, $object_id, $type );
-			$translations = apply_filters( 'wpml_get_element_translations', NULL, $trid, $type );
+			global $wpdb;
 
+			$translations = array();
+			$type = apply_filters( 'wpml_element_type', $post_type_or_taxonomy_name );
+
+			//$trid = apply_filters( 'wpml_element_trid', false, $object_id, $type );
+			$trid = $wpdb->get_var(
+				$wpdb->prepare(
+					"
+					SELECT trid
+					FROM {$wpdb->prefix}icl_translations
+					WHERE element_id = %d
+					AND element_type = '%s'
+					",
+					$object_id,
+					$type
+				)
+			);
+
+			if( ! $trid ) {
+				return $translations;
+			}
+
+			//$translations = apply_filters( 'wpml_get_element_translations', NULL, $trid, $type );
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"
+					SELECT element_id, element_type, language_code, source_language_code
+					FROM {$wpdb->prefix}icl_translations
+					WHERE trid = %d
+					",
+					$trid
+				)
+			);
+
+			if( ! $results ) {
+				return $translations;
+			}
+
+			foreach( $results as $translation ) {
+				$translations[ $translation->language_code ] = $translation;
+			}
+
+//file_put_contents( __DIR__ . '/log.txt', $sql . print_r($translation, true) );
 			return $translations;
 
 		}
@@ -364,6 +404,7 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 				return;
 			}
 
+			// TODO
 			$language_code = apply_filters( 'smc_wpml_pre_language_code', $language_data->language_code, $blog_id );
 
 			switch_to_blog( $blog_id );
@@ -393,6 +434,7 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 					continue;
 				}
 
+				// TODO
 				$translated_language_code = apply_filters( 'smc_wpml_pre_language_code', $translation->language_code, $blog_id );
 
 				$crossposted_translations[] = array(
