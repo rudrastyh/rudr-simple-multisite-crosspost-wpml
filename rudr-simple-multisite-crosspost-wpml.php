@@ -4,7 +4,7 @@
  * Description: Allows to connect translated posts to their originals.
  * Author: Misha Rudrastyh
  * Author URI: https://rudrastyh.com
- * Version: 2.3
+ * Version: 2.4
  * Plugin URI: https://rudrastyh.com
  * Network: true
  */
@@ -17,7 +17,9 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 
 			// everyting save_post
 			// we can not use more performant hooks because WPML can update language data outside REST
-			add_action( 'save_post', array( $this, 'save' ), 999, 2 );
+			add_action( 'rudr_crosspost_publish', array( $this, 'save' ), 999, 3 );
+			add_action( 'rudr_crosspost_update', array( $this, 'save' ), 999, 3 );
+			add_action( 'save_post', array( $this, 'save_gutenberg' ), 999, 2 );
 
 			// WooCommerce
 			add_filter( 'rudr_crosspost_is_crossposted_product', array( $this, 'get_crossposted_product_id' ), 99, 2 );
@@ -338,26 +340,38 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 		/*     HOOKS     */
 		/*****************/
 		// the only hook that is needed for regular posts ahaha, everything else is for WooCommerce
-		public function save( $post_id, $post ) {
+		public function save( $new_post_id, $blog_id, $data ){
 
-			if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost' ) ) {
+			if( isset( $_REQUEST[ 'meta-box-loader' ] ) && $_REQUEST[ 'meta-box-loader' ] ) {
 				return;
 			}
+			// at this moment we're on the target blog
+			// switch to the original blog
+			restore_current_blog();
 
-			if( ! $this->is_wpml_active() ) {
+			$this->update_translations( $data[ 'post_id' ], $blog_id, $new_post_id );
+
+			switch_to_blog( $blog_id );
+
+		}
+
+		public function save_gutenberg( $post_id, $post ) {
+
+			if(
+				// only when Multisite Crossposting is in use
+				! class_exists( 'Rudr_Simple_Multisite_Crosspost' )
+				// only if WPML is in use
+				|| ! $this->is_wpml_active()
+				// WPML also using meta-box-loader thing, that's why we need this hook by the way
+				|| ! isset( $_REQUEST[ 'meta-box-loader' ] ) || ! $_REQUEST[ 'meta-box-loader' ]
+				// not auto saving and stiff
+				|| defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE
+			) {
 				return;
-			}
-
-			if( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-        return;
 			}
 
 			$post_type = get_post_type_object( $post->post_type );
 			if ( ! current_user_can( $post_type->cap->edit_post, $post_id ) ) {
-				return;
-			}
-
-			if( ! is_multisite() ) {
 				return;
 			}
 
@@ -366,9 +380,6 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 				return;
 	    }
 
-			if( in_array( $post->post_type, array( 'product_variation', 'attachment' ) ) ) {
-				return;
-			}
 			$allowed_post_types = ( ( $allowed_post_types = get_site_option( 'rudr_smc_post_types', array() ) ) && is_array( $allowed_post_types ) ) ? $allowed_post_types : get_post_types( array( 'public' => true ) );
 			if( ! in_array( $post->post_type, $allowed_post_types ) ) {
 				return;
@@ -390,7 +401,8 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 
 		}
 
-		public function update_translations( $post_id, $blog_id ) {
+
+		public function update_translations( $post_id, $blog_id, $crossposted_id = 0 ) {
 
 			// get the necessary information first
 			$type = apply_filters( 'wpml_element_type', get_post_type( $post_id ) );
@@ -398,9 +410,11 @@ if( ! class_exists( 'Rudr_Simple_Multisite_Crosspost_WPML' ) ) {
 			$language_data = apply_filters( 'wpml_element_language_details', null, array( 'element_id' => $post_id, 'element_type' => $type ) );
 			// stdClass Object ( [element_id] => 44 [trid] => 107 [language_code] => en [source_language_code] => )
 //print_r( $language_data );exit;
-			// now we need to get a crossposted ID, it is different for regular posts and WooCommerce products
-			$crossposted_id = $this->is_crossposted( $post_id, $blog_id, $language_data->language_code );
-			if( ! $crossposted_id ) {
+
+			if(
+				! $crossposted_id
+				&& ! ( $crossposted_id = $this->is_crossposted( $post_id, $blog_id, $language_data->language_code ) )
+			) {
 				return;
 			}
 
